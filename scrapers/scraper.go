@@ -1,6 +1,8 @@
 package scrapers
 
+import "context"
+
 type Scraper interface {
-	Scrape()
+	Scrape(context.Context)
 	TargetName() string
 }

@@ -15,22 +15,27 @@ func (*Email) Export(exports chan any) error {
 
 	var emailClient email.EmailClient = email.GetGmailClient()
 	emailRecipientsEnv := os.Getenv("EMAIL_RECIPIENTS")
+	emailRecipients := strings.Split(emailRecipientsEnv, ",")
 
-	for res := range exports {
-		emailRecipients := strings.Split(emailRecipientsEnv, ",")
+	for rawMsg := range exports {
 		if len(emailRecipients) < 1 {
 			log.Println("env variable EMAIL_RECIPIENTS invalid")
 			break
 		}
-		if jobPosting, ok := res.(JobPosting); ok {
-			err := emailJob(emailRecipients, jobPosting, emailClient)
-			if err != nil {
-				log.Println(err)
+		switch msg := rawMsg.(type) {
+		case JobPosting:
+			{
+				err := emailJob(emailRecipients, msg, emailClient)
+				if err != nil {
+					log.Println(err)
+				}
 			}
-		} else if err, ok := res.(ScrapingError); ok {
-			err := emailError(emailRecipients, err, emailClient)
-			if err != nil {
-				log.Println(err)
+		case ScrapingError:
+			{
+				err := emailError(emailRecipients, msg, emailClient)
+				if err != nil {
+					log.Println(err)
+				}
 			}
 		}
 

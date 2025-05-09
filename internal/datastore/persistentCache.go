@@ -1,9 +1,11 @@
 package datastore
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
+	"time"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -15,12 +17,12 @@ func init() {
 }
 
 func initializeKvs() error {
-	db, err := bolt.Open("kv.db", 0600, nil)
+	db, err := bolt.Open("kv.db", 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err == nil {
 		kvs = db
 		return nil
 	} else {
-		return errors.New("failed to initialize key value store")
+		return fmt.Errorf("failed to initialize key value store: %w", err)
 	}
 }
 
@@ -44,7 +46,9 @@ func InitializePersistentCache() Cache {
 
 func GetPersistentCache() Cache {
 	if persistentCacheInstnace == nil {
-		return InitializePersistentCache()
+		var persistentCache Cache
+		persistentCache = sync.OnceValue(InitializePersistentCache)()
+		return persistentCache
 	}
 	return persistentCacheInstnace
 }
@@ -58,42 +62,42 @@ func (*persistentCache) Get(bucket string, key string) (any, error) {
 }
 
 func (*persistentCache) Put(bucket string, key string, value any) error {
-	var stringerVal fmt.Stringer
-	var stringerConvOk bool
-	if stringerVal, stringerConvOk = value.(fmt.Stringer); !stringerConvOk {
-		return errors.New("persistentCache: stringer not implemented, cant serialize value to string")
+	var (
+		marshaledValue []byte
+		marshalErr     error
+	)
+	if marshaledValue, marshalErr = json.Marshal(value); marshalErr != nil {
+		return marshalErr
 	}
-	err := put(bucket, key, stringerVal.String())
+	err := put(bucket, key, marshaledValue)
 	if err != nil {
 		log.Println(err)
 	}
 	return err
 }
 
-func get(bucketName string, key string) (string, error) {
+func get(bucketName string, key string) ([]byte, error) {
 
-	var value string
+	var byteVal []byte
 	err := kvs.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(bucketName))
 
 		if bucket != nil {
-			if byteVal := bucket.Get([]byte(key)); byteVal != nil {
-				value = string(byteVal)
-			}
+			byteVal = bucket.Get([]byte(key))
 		}
 
 		return nil
 	})
 
-	return value, err
+	return byteVal, err
 }
 
-func put(bucketName string, key string, value string) error {
+func put(bucketName string, key string, value []byte) error {
 
 	err := kvs.Update(func(tx *bolt.Tx) error {
 		bucket, err := tx.CreateBucketIfNotExists([]byte(bucketName))
 		if err == nil {
-			err = bucket.Put([]byte(key), []byte(value))
+			err = bucket.Put([]byte(key), value)
 		}
 		return err
 	})
