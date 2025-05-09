@@ -10,6 +10,7 @@ import (
 	"net/mail"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -89,8 +90,12 @@ func (client *GmailClient) getSenderAddress() *mail.Address {
 
 func GetGmailClient() EmailClient {
 	if gmailClient == nil {
-		gmailClient = &GmailClient{}
-		gmailClient.initialize(nil)
+
+		var once = sync.Once{}
+		once.Do(func() {
+			gmailClient = &GmailClient{}
+			gmailClient.initialize(nil)
+		})
 		return gmailClient
 	} else {
 		return gmailClient
@@ -168,7 +173,6 @@ func createAndEncodeEmail(from mail.Address, to []string, subject, body string) 
 	msgBuilder.WriteString(body)
 
 	rawMessage := msgBuilder.String()
-	fmt.Println(rawMessage)
 
 	encodedMessage := base64.URLEncoding.EncodeToString([]byte(rawMessage))
 	return rawMessage, encodedMessage
